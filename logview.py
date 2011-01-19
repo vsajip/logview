@@ -1,6 +1,12 @@
 #!/usr/bin/env python
+try:
+    import sip
+    sip.setapi('QString', 2)
+    sip.setapi('QVariant', 2)
+except ImportError:
+    pass
 from PyQt4.QtCore import SIGNAL, SLOT, Qt, QAbstractListModel, QModelIndex, \
-    QVariant, QString, QAbstractItemModel, QAbstractTableModel, QEvent
+   QAbstractItemModel, QAbstractTableModel, QEvent
 from PyQt4.QtGui import QMainWindow, QApplication, QMessageBox, QKeySequence, \
     QFileDialog, QItemDelegate, QTextEdit, QLineEdit, QHeaderView, QColor, \
     QFont, QSortFilterProxyModel
@@ -83,7 +89,7 @@ class LoggerModel(QAbstractItemModel):
         return result
 
     def data(self, index, role=Qt.DisplayRole):
-        result = QVariant()
+        result = None
         if index.isValid():
             node = index.internalPointer()
             if role == Qt.DisplayRole:
@@ -95,16 +101,12 @@ class LoggerModel(QAbstractItemModel):
                     pass
             elif role == Qt.ToolTipRole:
                 result = node.path
-        if not isinstance(result, QVariant):
-            result = QVariant(result)
         return result
 
     def headerData(self, section, orientation, role):
-        result = QVariant()
+        result = None
         if orientation == Qt.Horizontal and role == Qt.DisplayRole:
             result = 'Logger name'
-        if not isinstance(result, QVariant):
-            result = QVariant(result)
         return result
 
     def register_logger(self, name):
@@ -141,14 +143,14 @@ class Column(object):
 class LogRecordModel(QAbstractTableModel):
 
     foreground_map = {
-        logging.CRITICAL: QVariant(QColor(255, 255, 255)),
+        logging.CRITICAL: QColor(255, 255, 255),
     }
 
     background_map = {
-        logging.DEBUG: QVariant(QColor(192, 255, 255)),
-        logging.WARNING: QVariant(QColor(255, 255, 192)),
-        logging.ERROR: QVariant(QColor(255, 192, 192)),
-        logging.CRITICAL: QVariant(QColor(255, 0, 0)),
+        logging.DEBUG: QColor(192, 255, 255),
+        logging.WARNING: QColor(255, 255, 192),
+        logging.ERROR: QColor(255, 192, 192),
+        logging.CRITICAL: QColor(255, 0, 0),
     }
 
     def __init__(self, parent, records, columns):
@@ -174,7 +176,7 @@ class LogRecordModel(QAbstractTableModel):
         return result
 
     def data(self, index, role=Qt.DisplayRole):
-        result = QVariant()
+        result = None
         if index.isValid():
             record = self._records[index.row()]
             if role == Qt.DisplayRole:
@@ -197,20 +199,16 @@ class LogRecordModel(QAbstractTableModel):
                     result.setWeight(QFont.Bold)
             elif role == MessageRole: # special role used for searching
                 result = record.message
-        if not isinstance(result, QVariant):
-            result = QVariant(result)
         return result
 
     def headerData(self, section, orientation, role):
-        result = QVariant()
+        result = None
         if orientation == Qt.Horizontal and role == Qt.DisplayRole:
             try:
                 visible = [col.title for col in self._columns if col.visible]
                 result = visible[section]
             except IndexError:
                 pass
-        if not isinstance(result, QVariant):
-            result = QVariant(result)
         return result
 
     def add_record(self, record):
@@ -274,18 +272,16 @@ class PropertySheetModel(QAbstractTableModel):
         return len(self._keys)
 
     def headerData(self, section, orientation, role):
-        result = QVariant()
+        result = None
         if orientation == Qt.Horizontal and role == Qt.DisplayRole:
             try:
                 result = ('Name', 'Value', '')[section]
             except IndexError:
                 pass
-        if not isinstance(result, QVariant):
-            result = QVariant(result)
         return result
 
     def data(self, index, role=Qt.DisplayRole):
-        result = QVariant()
+        result = None
         if index.isValid():
             row = index.row()
             col = index.column()
@@ -317,8 +313,6 @@ class PropertySheetModel(QAbstractTableModel):
                     result = Qt.AlignHCenter
                 else:
                     result = Qt.AlignLeft
-        if not isinstance(result, QVariant):
-            result = QVariant(result)
         return result
 
 class FilterModel(QSortFilterProxyModel):
@@ -439,7 +433,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     @property
     def match_text(self):
-        return str(self.match.text()).strip()
+        return self.match.text().strip()
 
     def validate(self):
         reason = None
@@ -458,7 +452,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             flags = Qt.MatchRegExp
         else:
             flags = Qt.MatchContains
-        hits = model.match(start, MessageRole, QVariant(self.match_text),
+        hits = model.match(start, MessageRole, self.match_text,
                            1, Qt.MatchWrap | flags)
         if hits:
             result = hits[0]
@@ -528,7 +522,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def on_tree_rows_inserted(self, pindex, start, end):
         if self.expand_tree:
             self.tree.setExpanded(pindex, True)
-            name = str(self.tmodel.data(pindex).toString())
+            name = self.tmodel.data(pindex)
             node = pindex.internalPointer()
             logger.debug('Expanded: %s (%s)', name, node.path)
 
@@ -537,6 +531,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if sender is self.wantAll:
             buttons = (self.wantDebug, self.wantInfo, self.wantWarning,
                        self.wantError, self.wantCritical)
+            if state:
+                state = Qt.Checked
+            else:
+                state = Qt.Unchecked
             for button in buttons:
                 button.blockSignals(True)
                 button.setCheckState(state)
@@ -586,9 +584,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         model = self.pmodel
         col1 = model.data(model.index(index.row(), 0))
         col2 = model.data(model.index(index.row(), 1))
-        s  = str(col2.toString())
-        if '\n' in s and index.column() == 2:
-            dlg = textinfo.TextInfoDialog(self, s)
+        if '\n' in col2 and index.column() == 2:
+            dlg = textinfo.TextInfoDialog(self, col2)
             dlg.exec_()
 
 def main():

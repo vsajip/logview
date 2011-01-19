@@ -1,4 +1,4 @@
-from PyQt4.QtCore import Qt, QVariant, SIGNAL
+from PyQt4.QtCore import Qt, SIGNAL
 from PyQt4.QtGui import QDialog, QAbstractItemView, QListWidgetItem
 from ui_colprefs import Ui_ColPrefsDialog
 import copy
@@ -9,7 +9,7 @@ class ColumnItem(QListWidgetItem):
         self.column = column
 
     def data(self, role):
-        result = QVariant()
+        result = None
         if role == Qt.DisplayRole:
             result = self.column.title
         elif role == Qt.CheckStateRole:
@@ -17,13 +17,11 @@ class ColumnItem(QListWidgetItem):
                 result = Qt.Checked
             else:
                 result = Qt.Unchecked
-        if not isinstance(result, QVariant):
-            result = QVariant(result)
         return result
 
     def setData(self, role, value):
         if role == Qt.CheckStateRole:
-            self.column.visible = value.toBool()
+            self.column.visible = value
 
 class ColPrefsDialog(QDialog, Ui_ColPrefsDialog):
     def __init__(self, parent, columns):

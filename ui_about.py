@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'about.ui'
 #
-# Created: Sat Jan 15 18:16:12 2011
+# Created: Wed Jan 19 18:47:33 2011
 #      by: PyQt4 UI code generator 4.7.4
 #
 # WARNING! All changes made in this file will be lost!
@@ -49,7 +49,7 @@ class Ui_AboutDialog(object):
         self.vLay.addItem(spacerItem)
         self.copyright = QtGui.QLabel(self.layoutWidget)
         font = QtGui.QFont()
-        font.setPointSize(11)
+        font.setPointSize(10)
         self.copyright.setFont(font)
         self.copyright.setObjectName("copyright")
         self.vLay.addWidget(self.copyright)
