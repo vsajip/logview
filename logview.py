@@ -439,6 +439,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         reason = None
         if not self.match_text:
             reason = 'Nothing to search for'
+        elif not self.records:
+            reason = 'Nothing to search in'
         self.enable_control(self.search, reason)
         reason = None
         if not self.records:
@@ -487,7 +489,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             tmodel.register_logger(record.name)
         finally:
             self._lock.release()
-            self.clearAll.setEnabled(True)
+            self.validate()
 
     def on_master_selection_changed(self, sel, desel):
         self.update_detail()
