@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'mainwindow.ui'
 #
-# Created: Wed Jan 19 11:47:22 2011
+# Created: Wed Jan 19 22:23:03 2011
 #      by: PyQt4 UI code generator 4.7.4
 #
 # WARNING! All changes made in this file will be lost!
@@ -103,6 +103,11 @@ class Ui_MainWindow(object):
         self.search.setObjectName("search")
         self.gridLayout.addWidget(self.search, 4, 3, 1, 1)
         self.match = QtGui.QLineEdit(self.tbmaster)
+        sizePolicy = QtGui.QSizePolicy(QtGui.QSizePolicy.Preferred, QtGui.QSizePolicy.Fixed)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(0)
+        sizePolicy.setHeightForWidth(self.match.sizePolicy().hasHeightForWidth())
+        self.match.setSizePolicy(sizePolicy)
         self.match.setObjectName("match")
         self.gridLayout.addWidget(self.match, 4, 1, 1, 1)
         self.matchlabel = QtGui.QLabel(self.tbmaster)
