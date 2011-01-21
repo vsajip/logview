@@ -391,12 +391,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.expand_tree = True
         self.stick_to_bottom = True
         self.moved_to_bottom = False
+        self.split_sizes = {}
         self.setupUi(self)
 
     def setupUi(self, w):
         super(MainWindow, self).setupUi(w)
         self.load_settings()
-        self.connect(self.action_About, SIGNAL('triggered(bool)'), self.on_help_about)
+
+        connect = self.connect
+
+        connect(self.action_About, SIGNAL('triggered(bool)'), self.on_help_about)
         split = self.cSplit
         split.setStretchFactor(0, 2)
         split.setStretchFactor(1, 5)
@@ -424,27 +428,30 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.connect(self.master.selectionModel(), SIGNAL('selectionChanged(QItemSelection,QItemSelection)'), self.on_master_selection_changed)
         self.mvbar = vbar = self.master.verticalScrollBar()
-        self.connect(vbar, SIGNAL('rangeChanged(int,int)'), self.on_master_range)
-        self.connect(vbar, SIGNAL('sliderMoved(int)'), self.on_master_slide)
-        self.connect(self.lmodel, SIGNAL('modelReset()'), self.on_lmodel_reset)
-        self.connect(self.lmodel, SIGNAL('rowsInserted(QModelIndex,int,int)'), self.on_master_data_change)
-        self.connect(self.tmodel, SIGNAL('rowsInserted(QModelIndex,int,int)'), self.on_tree_rows_inserted)
-        self.connect(self.tree.selectionModel(), SIGNAL('selectionChanged(QItemSelection,QItemSelection)'), self.on_tree_selection_changed)
+        connect(vbar, SIGNAL('rangeChanged(int,int)'), self.on_master_range)
+        connect(vbar, SIGNAL('sliderMoved(int)'), self.on_master_slide)
+        connect(self.lmodel, SIGNAL('modelReset()'), self.on_lmodel_reset)
+        connect(self.lmodel, SIGNAL('rowsInserted(QModelIndex,int,int)'), self.on_master_data_change)
+        connect(self.tmodel, SIGNAL('rowsInserted(QModelIndex,int,int)'), self.on_tree_rows_inserted)
+        connect(self.tree.selectionModel(), SIGNAL('selectionChanged(QItemSelection,QItemSelection)'), self.on_tree_selection_changed)
 
-        self.connect(self.detail, SIGNAL('clicked(QModelIndex)'), self.on_detail_click)
-        self.connect(self.wantDebug, SIGNAL('stateChanged(int)'), self.on_want_changed)
-        self.connect(self.wantInfo, SIGNAL('stateChanged(int)'), self.on_want_changed)
-        self.connect(self.wantWarning, SIGNAL('stateChanged(int)'), self.on_want_changed)
-        self.connect(self.wantError, SIGNAL('stateChanged(int)'), self.on_want_changed)
-        self.connect(self.wantCritical, SIGNAL('stateChanged(int)'), self.on_want_changed)
-        self.connect(self.wantAll, SIGNAL('stateChanged(int)'), self.on_want_changed)
+        connect(self.detail, SIGNAL('clicked(QModelIndex)'), self.on_detail_click)
+        connect(self.wantDebug, SIGNAL('stateChanged(int)'), self.on_want_changed)
+        connect(self.wantInfo, SIGNAL('stateChanged(int)'), self.on_want_changed)
+        connect(self.wantWarning, SIGNAL('stateChanged(int)'), self.on_want_changed)
+        connect(self.wantError, SIGNAL('stateChanged(int)'), self.on_want_changed)
+        connect(self.wantCritical, SIGNAL('stateChanged(int)'), self.on_want_changed)
+        connect(self.wantAll, SIGNAL('stateChanged(int)'), self.on_want_changed)
 
-        self.connect(self.clearAll, SIGNAL('clicked(bool)'), self.on_clear)
-        self.connect(self.colprefs, SIGNAL('clicked(bool)'), self.on_columns)
+        connect(self.clearAll, SIGNAL('clicked(bool)'), self.on_clear)
+        connect(self.colprefs, SIGNAL('clicked(bool)'), self.on_columns)
 
-        self.connect(self.match, SIGNAL('textEdited(QString)'), self.on_text_changed)
-        self.connect(self.match, SIGNAL('returnPressed()'), self.on_search)
-        self.connect(self.search, SIGNAL('clicked(bool)'), self.on_search)
+        connect(self.match, SIGNAL('textEdited(QString)'), self.on_text_changed)
+        connect(self.match, SIGNAL('returnPressed()'), self.on_search)
+        connect(self.search, SIGNAL('clicked(bool)'), self.on_search)
+
+        connect(self.cSplit, SIGNAL('doubleClicked'), self.on_csplit_dclick)
+        connect(self.mSplit, SIGNAL('doubleClicked'), self.on_msplit_dclick)
 
         self.validate()
 
@@ -570,7 +577,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.stretch_last(self.master)
         self.update_detail()
         self.moved_to_bottom = False
-        
+
     def update_detail(self):
         index = self.master.currentIndex()
         self.set_search_start(index)
@@ -659,6 +666,42 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def on_master_slide(self, pos):
         self.moved_to_bottom = (pos == self.mvbar.maximum())
+
+    def left_collapse(self, splitter):
+        sizes = splitter.sizes()
+        name = splitter.objectName()
+        d = self.split_sizes
+        saved_size = d.get(name, 0)
+        if sizes[0] == 0 and saved_size > 0:
+            sizes[0] = saved_size
+            sizes[1] -= sizes[0]
+            d[name] = 0
+        else:
+            d[name] = sizes[0]
+            sizes[1] += sizes[0]
+            sizes[0] = 0
+        splitter.setSizes(sizes)
+
+    def right_collapse(self, splitter):
+        sizes = splitter.sizes()
+        name = splitter.objectName()
+        d = self.split_sizes
+        saved_size = d.get(name, 0)
+        if sizes[-1] == 0 and saved_size > 0:
+            sizes[-1] = saved_size
+            sizes[-2] -= sizes[-1]
+            d[name] = 0
+        else:
+            d[name] = sizes[-1]
+            sizes[-2] += sizes[-1]
+            sizes[-1] = 0
+        splitter.setSizes(sizes)
+
+    def on_csplit_dclick(self, index):
+        self.left_collapse(self.cSplit)
+
+    def on_msplit_dclick(self, index):
+        self.right_collapse(self.mSplit)
 
 def main():
     app = QApplication(sys.argv)

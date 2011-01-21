@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'mainwindow.ui'
 #
-# Created: Wed Jan 19 22:23:03 2011
+# Created: Fri Jan 21 13:34:23 2011
 #      by: PyQt4 UI code generator 4.7.4
 #
 # WARNING! All changes made in this file will be lost!
@@ -17,7 +17,7 @@ class Ui_MainWindow(object):
         self.centralwidget.setObjectName("centralwidget")
         self.verticalLayout_3 = QtGui.QVBoxLayout(self.centralwidget)
         self.verticalLayout_3.setObjectName("verticalLayout_3")
-        self.cSplit = QtGui.QSplitter(self.centralwidget)
+        self.cSplit = Splitter(self.centralwidget)
         self.cSplit.setOrientation(QtCore.Qt.Horizontal)
         self.cSplit.setObjectName("cSplit")
         self.layoutWidget = QtGui.QWidget(self.cSplit)
@@ -43,7 +43,7 @@ class Ui_MainWindow(object):
         self.tree.setObjectName("tree")
         self.verticalLayout.addWidget(self.tree)
         self.verticalLayout.setStretch(1, 1)
-        self.mSplit = QtGui.QSplitter(self.cSplit)
+        self.mSplit = Splitter(self.cSplit)
         self.mSplit.setOrientation(QtCore.Qt.Vertical)
         self.mSplit.setObjectName("mSplit")
         self.layoutWidget1 = QtGui.QWidget(self.mSplit)
@@ -185,4 +185,5 @@ class Ui_MainWindow(object):
         self.menu_Help.setTitle(QtGui.QApplication.translate("MainWindow", "&Help", None, QtGui.QApplication.UnicodeUTF8))
         self.action_About.setText(QtGui.QApplication.translate("MainWindow", "&About", None, QtGui.QApplication.UnicodeUTF8))
 
+from splitters import Splitter
 from tables import DetailTable, MasterTable, LoggerTree

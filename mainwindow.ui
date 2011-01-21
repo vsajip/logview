@@ -16,7 +16,7 @@
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout_3">
     <item>
-     <widget class="QSplitter" name="cSplit">
+     <widget class="Splitter" name="cSplit">
       <property name="orientation">
        <enum>Qt::Horizontal</enum>
       </property>
@@ -66,7 +66,7 @@
         </item>
        </layout>
       </widget>
-      <widget class="QSplitter" name="mSplit">
+      <widget class="Splitter" name="mSplit">
        <property name="orientation">
         <enum>Qt::Vertical</enum>
        </property>
@@ -284,6 +284,12 @@
    <class>LoggerTree</class>
    <extends>QTreeView</extends>
    <header>tables.h</header>
+  </customwidget>
+  <customwidget>
+   <class>Splitter</class>
+   <extends>QSplitter</extends>
+   <header>splitters.h</header>
+   <container>1</container>
   </customwidget>
  </customwidgets>
  <tabstops>
