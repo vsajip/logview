@@ -6,10 +6,8 @@ class SplitterHandle(QSplitterHandle):
         super(SplitterHandle, self).mouseDoubleClickEvent(event)
         splitter = self.splitter()
         index = splitter.indexOf(self)
-        splitter.emit(SIGNAL('doubleClicked'), index)
+        splitter.emit(SIGNAL('doubleClicked'), index, int(event.buttons()))
 
 class Splitter(QSplitter):
     def createHandle(self):
         return SplitterHandle(self.orientation(), self)
-
-

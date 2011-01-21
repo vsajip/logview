@@ -593,9 +593,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def on_tree_rows_inserted(self, pindex, start, end):
         if self.expand_tree:
-            self.tree.setExpanded(pindex, True)
-            name = self.tmodel.data(pindex)
+            tree = self.tree
+            tmodel = self.tmodel
+            tree.expand(pindex)
+            name = tmodel.data(pindex)
             node = pindex.internalPointer()
+            while start <= end:
+                index = tmodel.index(start, 0, pindex)
+                assert index.isValid()
+                tree.expand(index)
+                start += 1
             #logger.debug('Expanded: %s (%s)', name, node.path)
 
     def on_want_changed(self, state):
@@ -697,11 +704,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             sizes[-1] = 0
         splitter.setSizes(sizes)
 
-    def on_csplit_dclick(self, index):
-        self.left_collapse(self.cSplit)
+    def on_csplit_dclick(self, index, buttons):
+        if buttons & Qt.LeftButton:
+            self.left_collapse(self.cSplit)
+        else:
+            self.right_collapse(self.cSplit)
 
-    def on_msplit_dclick(self, index):
-        self.right_collapse(self.mSplit)
+    def on_msplit_dclick(self, index, buttons):
+        if buttons & Qt.LeftButton:
+            self.left_collapse(self.mSplit)
+        else:
+            self.right_collapse(self.mSplit)
 
 def main():
     app = QApplication(sys.argv)
