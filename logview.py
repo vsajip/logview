@@ -6,7 +6,7 @@ try:
 except ImportError:
     pass
 from PyQt4.QtCore import SIGNAL, SLOT, Qt, QAbstractListModel, QModelIndex, \
-   QAbstractItemModel, QAbstractTableModel, QEvent
+   QAbstractItemModel, QAbstractTableModel, QEvent, QCoreApplication, QSettings
 from PyQt4.QtGui import QMainWindow, QApplication, QMessageBox, QKeySequence, \
     QFileDialog, QItemDelegate, QTextEdit, QLineEdit, QHeaderView, QColor, \
     QFont, QSortFilterProxyModel
@@ -14,6 +14,7 @@ from ui_mainwindow import Ui_MainWindow
 
 import about
 import bisect
+import collections
 import colprefs
 try:
     import json
@@ -23,6 +24,10 @@ import listeners
 import logging
 from logging.handlers import DEFAULT_TCP_LOGGING_PORT, DEFAULT_UDP_LOGGING_PORT
 import os
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 import re
 import sys
 import textinfo
@@ -153,11 +158,12 @@ class LogRecordModel(QAbstractTableModel):
         logging.CRITICAL: QColor(255, 0, 0),
     }
 
-    def __init__(self, parent, records, columns):
+    def __init__(self, parent, records, columns, capacity=0):
         super(LogRecordModel, self).__init__(parent)
         self._records = records
         self._columns = columns
         self.font = parent.font()
+        self._capacity = capacity
 
     def columnCount(self, index):
         if index.isValid():
@@ -213,12 +219,20 @@ class LogRecordModel(QAbstractTableModel):
 
     def add_record(self, record):
         pos = len(self._records)
+        if self._capacity and pos >= self._capacity:
+            self.beginRemoveRows(invindex, 0, 0)
+            self._records.popleft()
+            self.endRemoveRows()
+            pos -= 1
         self.beginInsertRows(invindex, pos, pos)
         self._records.append(record)
         self.endInsertRows()
 
     def clear(self):
-        del self._records[:]
+        if hasattr(self._records, 'clear'):
+            self._records.clear()
+        else:
+            del self._records[:]
         self.reset()
 
     def get_record(self, pos):
@@ -341,6 +355,23 @@ class FilterModel(QSortFilterProxyModel):
         return result
 
 class MainWindow(QMainWindow, Ui_MainWindow):
+
+    DEFAULT_COLUMNS = [
+        Column('asctime', 'Creation time'),
+        Column('name', 'Logger name'),
+        Column('levelname', 'Level'),
+        Column('message', 'Message'),
+        Column('funcName', 'Function', False),
+        Column('pathname', 'Path name', False),
+        Column('filename', 'File name', False),
+        Column('lineno', 'Line no.', False),
+        Column('module', 'Module', False),
+        Column('process', 'Process ID', False),
+        Column('processName', 'Process name', False),
+        Column('thread', 'Thread ID', False),
+        Column('threadName', 'Thread name', False),
+    ]
+
     def __init__(self):
         super(MainWindow, self).__init__()
         self.tcp_server = s = listeners.LoggingTCPServer(('localhost',
@@ -356,27 +387,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.udp_thread = t = threading.Thread(target=s.serve_until_stopped)
         t.setDaemon(True)
         t.start()
-        self.columns = [
-            Column('asctime', 'Creation time'),
-            Column('name', 'Logger name'),
-            Column('levelname', 'Level'),
-            Column('message', 'Message'),
-            Column('funcName', 'Function', False),
-            Column('pathname', 'Path name', False),
-            Column('filename', 'File name', False),
-            Column('lineno', 'Line no.', False),
-            Column('module', 'Module', False),
-            Column('process', 'Process ID', False),
-            Column('processName', 'Process name', False),
-            Column('thread', 'Thread ID', False),
-            Column('threadName', 'Thread name', False),
-        ]
         self._sindex = 0
         self.expand_tree = True
+        self.stick_to_bottom = True
+        self.moved_to_bottom = False
         self.setupUi(self)
 
     def setupUi(self, w):
         super(MainWindow, self).setupUi(w)
+        self.load_settings()
         self.connect(self.action_About, SIGNAL('triggered(bool)'), self.on_help_about)
         split = self.cSplit
         split.setStretchFactor(0, 2)
@@ -384,7 +403,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         split = self.mSplit
         split.setStretchFactor(0, 5)
         split.setStretchFactor(1, 3)
-        self.records = []
+        self.records = collections.deque()
         self.tmodel = LoggerModel(self)
         self.tree.setModel(self.tmodel)
         self.lmodel = LogRecordModel(self, self.records, self.columns)
@@ -404,8 +423,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.tbtree.hide()
 
         self.connect(self.master.selectionModel(), SIGNAL('selectionChanged(QItemSelection,QItemSelection)'), self.on_master_selection_changed)
-        self.connect(self.lmodel, SIGNAL('modelReset()'), self.update_detail)
-        self.connect(self.lmodel, SIGNAL('modelReset()'), self.stretch_last_master)
+        self.mvbar = vbar = self.master.verticalScrollBar()
+        self.connect(vbar, SIGNAL('rangeChanged(int,int)'), self.on_master_range)
+        self.connect(vbar, SIGNAL('sliderMoved(int)'), self.on_master_slide)
+        self.connect(self.lmodel, SIGNAL('modelReset()'), self.on_lmodel_reset)
         self.connect(self.lmodel, SIGNAL('rowsInserted(QModelIndex,int,int)'), self.on_master_data_change)
         self.connect(self.tmodel, SIGNAL('rowsInserted(QModelIndex,int,int)'), self.on_tree_rows_inserted)
         self.connect(self.tree.selectionModel(), SIGNAL('selectionChanged(QItemSelection,QItemSelection)'), self.on_tree_selection_changed)
@@ -447,16 +468,56 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             reason = 'Nothing to clear'
         self.enable_control(self.clearAll, reason)
 
+    def show_status_message(self, s):
+        self.statusbar.showMessage(s, 2000)
+
+    def load_settings(self):
+        settings = QSettings()
+        settings.beginGroup('mainwindow')
+        pos = settings.value('pos')
+        size = settings.value('size')
+        if pos:
+            self.move(pos)
+        if size:
+            self.resize(size)
+        settings.endGroup()
+        columns = settings.value('columns')
+        if not columns:
+            columns = self.DEFAULT_COLUMNS
+        else:
+            columns = pickle.loads(columns.encode('utf-8'))
+            columns = [Column(**d) for d in columns]
+        self.columns = columns
+
+    def save_settings(self):
+        settings = QSettings()
+        settings.beginGroup('mainwindow')
+        settings.setValue('pos', self.pos())
+        settings.setValue('size', self.size())
+        settings.endGroup()
+        cols = [c.__dict__ for c in self.columns]
+        settings.setValue('columns', pickle.dumps(cols))
+
+    def closeEvent(self, event):
+        self.save_settings()
+        event.accept()
+
     def on_search(self, checked=False):
         model = self.flmodel
         start = model.index(self._sindex, 0, invindex)
+        s = self.match_text
         if self.useRegexp.isChecked():
             flags = Qt.MatchRegExp
+            if not s.startswith('.*'):
+                s = '.*%s' % s
+            if not s.endswith('.*'):
+                s = '%s.*' % s
         else:
             flags = Qt.MatchContains
-        hits = model.match(start, MessageRole, self.match_text,
-                           1, Qt.MatchWrap | flags)
-        if hits:
+        hits = model.match(start, MessageRole, s, 1, Qt.MatchWrap | flags)
+        if not hits:
+            self.show_status_message("No matches found for '%s'." % self.match_text)
+        else:
             result = hits[0]
             self.set_search_start(result)
             self.master.scrollTo(result)
@@ -505,9 +566,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         h.setStretchLastSection(True)
         return h
 
-    def stretch_last_master(self):
+    def on_lmodel_reset(self):
         self.stretch_last(self.master)
-
+        self.update_detail()
+        self.moved_to_bottom = False
+        
     def update_detail(self):
         index = self.master.currentIndex()
         self.set_search_start(index)
@@ -526,7 +589,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.tree.setExpanded(pindex, True)
             name = self.tmodel.data(pindex)
             node = pindex.internalPointer()
-            logger.debug('Expanded: %s (%s)', name, node.path)
+            #logger.debug('Expanded: %s (%s)', name, node.path)
 
     def on_want_changed(self, state):
         sender = self.sender()
@@ -590,8 +653,21 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             dlg = textinfo.TextInfoDialog(self, col2)
             dlg.exec_()
 
+    def on_master_range(self, min, max):
+        if self.stick_to_bottom and self.moved_to_bottom:
+            self.mvbar.setValue(max)
+
+    def on_master_slide(self, pos):
+        self.moved_to_bottom = (pos == self.mvbar.maximum())
+
 def main():
     app = QApplication(sys.argv)
+
+    QCoreApplication.setApplicationName('LogView')
+    QCoreApplication.setApplicationVersion('0.1')
+    QCoreApplication.setOrganizationName('Vinay Sajip')
+    QCoreApplication.setOrganizationDomain('www.red-dove.com')
+
     main = MainWindow()
     main.show()
     app.exec_()
