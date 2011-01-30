@@ -1,5 +1,7 @@
-#
-# Simple script to generate logging messages and send to TCP/UDP sockets.
+#!/usr/bin/env python
+"""
+Simple script to generate logging messages and send to TCP/UDP sockets.
+"""
 import logging
 from logging.handlers import (SocketHandler, DatagramHandler,
                               DEFAULT_TCP_LOGGING_PORT,
@@ -43,11 +45,28 @@ def doo_doo(log_data):
             dest, level, msgno = log_data.what_to_log()
             dest.log(level, 'Message no. %d', msgno)
 
+def get_addr(s, default_port):
+    if ':' not in s:
+        result = s, default_port
+    else:
+        h, p = s.split(':')
+        result = h, int(p)
+    return result
+
 def main():
     parser = optparse.OptionParser()
-    parser.add_option('-c', '--count', default=0, type='int', dest='count')
-    parser.add_option('-d', '--delay', default=300, dest='delay')
-    parser.add_option('-e', '--exceptions', default=0.25, type='float', dest='excprob')
+    parser.add_option('-c', '--count', default=0, type='int', dest='count',
+                      help='Number of messages to log')
+    parser.add_option('-d', '--delay', default=300, type='int', dest='delay',
+                      help='Amount to delay after each iteration (msecs, default is 300)')
+    parser.add_option('-e', '--exceptions', default=0.25, type='float', dest='excprob',
+                      help='Probability for raising exceptions (default is 0.25)')
+    parser.add_option('', '--host', dest='hostname',
+                      help='Send all logs to specified host using default ports')
+    parser.add_option('-t', '--tcp', default='localhost', dest='tcphost',
+                      help='Where to send TCP logs (host[:port])')
+    parser.add_option('-u', '--udp', default='localhost', dest='udphost',
+                      help='Where to send UDP logs (host[:port])')
     options, args = parser.parse_args()
 
     tcp_logger = logging.getLogger('tcp')
@@ -58,7 +77,7 @@ def main():
 
     components = ['jim', 'fred', 'sheila']
 
-#    The code below is replaced ith a literal list, as Python 2.5 doesn't have
+#    The code below is replaced with a literal list, as Python 2.5 doesn't have
 #    itertools.permutations
 #
 #    from itertools import permutations
@@ -90,13 +109,21 @@ def main():
     ]
 
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)-8s %(name)-19s %(message)s')
-    h = SocketHandler('localhost', DEFAULT_TCP_LOGGING_PORT)
+
+    if options.hostname:
+        addr = (options.hostname, DEFAULT_TCP_LOGGING_PORT)
+    else:
+        addr = get_addr(options.tcphost, DEFAULT_TCP_LOGGING_PORT)
+    h = SocketHandler(*addr)
     tcp_logger.addHandler(h)
-    h = DatagramHandler('localhost', DEFAULT_UDP_LOGGING_PORT)
+    if options.hostname:
+        addr = (options.hostname, DEFAULT_UDP_LOGGING_PORT)
+    else:
+        addr = get_addr(options.udphost, DEFAULT_UDP_LOGGING_PORT)
+    h = DatagramHandler(*addr)
     udp_logger.addHandler(h)
 
     log_data = LogData(loggers)
-    msgno = 0
     try:
         while True:
             try:
@@ -108,7 +135,7 @@ def main():
             except Exception:
                 dest, level, msgno = log_data.what_to_log()
                 dest.exception('Exception message no. %d', msgno)
-            if options.count and msgno >= options.count:
+            if options.count and log_data.msgno >= options.count:
                 break
             if options.delay:
                 time.sleep(options.delay / 1000.0)

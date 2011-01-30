@@ -1,15 +1,17 @@
 #!/usr/bin/env python
+"""
+A program to view logs sent via TCP and UDP sockets.
+"""
 try:
     import sip
     sip.setapi('QString', 2)
     sip.setapi('QVariant', 2)
+    import PyQt4.QtCore as QtCore
+    import PyQt4.QtGui as QtGui
 except ImportError:
-    pass
-from PyQt4.QtCore import SIGNAL, SLOT, Qt, QAbstractListModel, QModelIndex, \
-   QAbstractItemModel, QAbstractTableModel, QEvent, QCoreApplication, QSettings
-from PyQt4.QtGui import QMainWindow, QApplication, QMessageBox, QKeySequence, \
-    QFileDialog, QItemDelegate, QTextEdit, QLineEdit, QHeaderView, QColor, \
-    QFont, QSortFilterProxyModel
+    import PySide.QtCore as QtCore
+    import PySide.QtGui as QtGui
+Qt = QtCore.Qt
 from ui_mainwindow import Ui_MainWindow
 
 import about
@@ -23,6 +25,7 @@ except ImportError:
 import listeners
 import logging
 from logging.handlers import DEFAULT_TCP_LOGGING_PORT, DEFAULT_UDP_LOGGING_PORT
+import optparse
 import os
 try:
     import cPickle as pickle
@@ -36,9 +39,9 @@ import threading
 appname = os.path.splitext(os.path.basename(sys.argv[0]))[0]
 logger = logging.getLogger(appname)
 
-MessageRole = Qt.UserRole
+MessageRole = QtCore.Qt.UserRole
 
-invindex = QModelIndex()
+invindex = QtCore.QModelIndex()
 
 class TreeNode(object):
     def __init__(self, parent, name):
@@ -53,7 +56,7 @@ class TreeNode(object):
             result.insert(0, self.parent.path)
         return '.'.join(result)
 
-class LoggerModel(QAbstractItemModel):
+class LoggerModel(QtCore.QAbstractItemModel):
     def __init__(self, parent):
         super(LoggerModel, self).__init__(parent)
         self._root = TreeNode(None, '')
@@ -145,17 +148,18 @@ class Column(object):
         self.title = title
         self.visible = visible
 
-class LogRecordModel(QAbstractTableModel):
+class LogRecordModel(QtCore.QAbstractTableModel):
 
     foreground_map = {
-        logging.CRITICAL: QColor(255, 255, 255),
+        logging.ERROR: QtGui.QColor(255, 0, 0),
+        logging.CRITICAL: QtGui.QColor(255, 255, 255),
     }
 
     background_map = {
-        logging.DEBUG: QColor(192, 255, 255),
-        logging.WARNING: QColor(255, 255, 192),
-        logging.ERROR: QColor(255, 192, 192),
-        logging.CRITICAL: QColor(255, 0, 0),
+        logging.DEBUG: QtGui.QColor(192, 255, 255),
+        logging.WARNING: QtGui.QColor(255, 255, 192),
+        #logging.ERROR: QtGui.QColor(255, 192, 192),
+        logging.CRITICAL: QtGui.QColor(255, 0, 0),
     }
 
     def __init__(self, parent, records, columns, capacity=0):
@@ -171,7 +175,6 @@ class LogRecordModel(QAbstractTableModel):
         else:
             visible = [col for col in self._columns if col.visible]
             result = len(visible)
-        #logger.debug('columnCount: %d', result)
         return result
 
     def rowCount(self, index):
@@ -189,7 +192,6 @@ class LogRecordModel(QAbstractTableModel):
                 try:
                     viscols = [c for c in self._columns if c.visible]
                     col = viscols[index.column()]
-                    #logger.debug('index col: %d, col: %s', index.column(), col.name)
                     v = getattr(record, col.name)
                     result = v
                 except Exception:
@@ -200,7 +202,7 @@ class LogRecordModel(QAbstractTableModel):
                 result = self.foreground_map.get(record.levelno)
             elif role == Qt.FontRole:
                 result = None
-                if record.levelno == logging.CRITICAL:
+                if record.levelno >= logging.ERROR:
                     result = QFont(self.font)
                     result.setWeight(QFont.Bold)
             elif role == MessageRole: # special role used for searching
@@ -261,7 +263,7 @@ def attrcmp(k1, k2):
         result = cmp(ATTRS.index(k1), ATTRS.index(k2))
     return result
 
-class PropertySheetModel(QAbstractTableModel):
+class PropertySheetModel(QtCore.QAbstractTableModel):
     def __init__(self, parent, record=None):
         super(PropertySheetModel, self).__init__(parent)
         self.record = record
@@ -314,14 +316,14 @@ class PropertySheetModel(QAbstractTableModel):
                             v = ''
                     result = v
                 except Exception:
-                    logger.exception('Error')
+                    logger.exception('Error getting LogRecord attribute')
             elif role == Qt.ToolTipRole and col == 1:
                 try:
                     key = self._keys[row]
                     if key == 'exc_text':
                         result = getattr(self._record, key)
                 except Exception:
-                    logger.exception('Error')
+                    logger.exception('Error getting exception text')
             elif role == Qt.TextAlignmentRole:
                 if col == 2:
                     result = Qt.AlignHCenter
@@ -329,7 +331,7 @@ class PropertySheetModel(QAbstractTableModel):
                     result = Qt.AlignLeft
         return result
 
-class FilterModel(QSortFilterProxyModel):
+class FilterModel(QtGui.QSortFilterProxyModel):
     def __init__(self, parent):
         super(FilterModel, self).__init__(parent)
         self.tree = parent.tree
@@ -354,7 +356,16 @@ class FilterModel(QSortFilterProxyModel):
                         result = False
         return result
 
-class MainWindow(QMainWindow, Ui_MainWindow):
+def get_addr(s, default_port):
+    if ':' not in s:
+        result = s, default_port
+    else:
+        h, p = s.split(':')
+        result = h, int(p)
+    return result
+
+
+class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
     DEFAULT_COLUMNS = [
         Column('asctime', 'Creation time'),
@@ -372,21 +383,28 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         Column('threadName', 'Thread name', False),
     ]
 
-    def __init__(self):
+    def __init__(self, options=None):
         super(MainWindow, self).__init__()
-        self.tcp_server = s = listeners.LoggingTCPServer(('localhost',
-                                                         DEFAULT_TCP_LOGGING_PORT),
-                                                         self.on_record)
+        self.options = options
+        if not options:
+            addr = ('0.0.0.0', DEFAULT_TCP_LOGGING_PORT)
+        else:
+            addr = get_addr(options.tcphost, DEFAULT_TCP_LOGGING_PORT)
+        self.tcp_server = s = listeners.LoggingTCPServer(addr, self.on_record)
         self.tcp_thread = t = threading.Thread(target=s.serve_until_stopped)
         self._lock = threading.RLock()
         t.setDaemon(True)
         t.start()
-        self.udp_server = s = listeners.LoggingUDPServer(('localhost',
-                                                         DEFAULT_UDP_LOGGING_PORT),
-                                                         self.on_record)
+        
+        if not options:
+            addr = ('0.0.0.0', DEFAULT_UDP_LOGGING_PORT)
+        else:
+            addr = get_addr(options.udphost, DEFAULT_UDP_LOGGING_PORT)
+        self.udp_server = s = listeners.LoggingUDPServer(addr, self.on_record)
         self.udp_thread = t = threading.Thread(target=s.serve_until_stopped)
         t.setDaemon(True)
         t.start()
+
         self._sindex = 0
         self.expand_tree = True
         self.stick_to_bottom = True
@@ -398,7 +416,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         super(MainWindow, self).setupUi(w)
         self.load_settings()
 
+        if not sys.platform.startswith('darwin'):
+            self.setWindowIcon(QtGui.QIcon('logview.ico'))
+
         connect = self.connect
+        SIGNAL = QtCore.SIGNAL
+        QHeaderView = QtGui.QHeaderView
 
         connect(self.action_About, SIGNAL('triggered(bool)'), self.on_help_about)
         split = self.cSplit
@@ -410,7 +433,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.records = collections.deque()
         self.tmodel = LoggerModel(self)
         self.tree.setModel(self.tmodel)
-        self.lmodel = LogRecordModel(self, self.records, self.columns)
+        if not self.options:
+            capacity = 0
+        else:
+            capacity = self.options.capacity
+        self.lmodel = LogRecordModel(self, self.records, self.columns, capacity)
         self.flmodel = m = FilterModel(self)
         m.setSourceModel(self.lmodel)
         self.master.setModel(m)
@@ -479,7 +506,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.statusbar.showMessage(s, 2000)
 
     def load_settings(self):
-        settings = QSettings()
+        settings = QtCore.QSettings()
         settings.beginGroup('mainwindow')
         pos = settings.value('pos')
         size = settings.value('size')
@@ -497,7 +524,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.columns = columns
 
     def save_settings(self):
-        settings = QSettings()
+        settings = QtCore.QSettings()
         settings.beginGroup('mainwindow')
         settings.setValue('pos', self.pos())
         settings.setValue('size', self.size())
@@ -716,20 +743,39 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         else:
             self.right_collapse(self.mSplit)
 
-def main():
-    app = QApplication(sys.argv)
 
+def main():
+
+    parser = optparse.OptionParser()
+    parser.add_option('-c', '--capacity', default=0, type='int', dest='capacity',
+                      help='Maximum number of messages to hold')
+    parser.add_option('-t', '--tcp', default='0.0.0.0', dest='tcphost',
+                      help='Where to listen for TCP traffic (host[:port])')
+    parser.add_option('-u', '--udp', default='0.0.0.0', dest='udphost',
+                      help='Where to listen for UDP traffic (host[:port])')
+    
+    # On a packaged OS X system, a '-psn' argument is passed which we
+    # don't care about
+    args = [arg for arg in sys.argv[1:] if not arg.startswith('-psn')]
+    options, args = parser.parse_args(args)
+
+    app = QtGui.QApplication(sys.argv)
+    QCoreApplication = QtCore.QCoreApplication
     QCoreApplication.setApplicationName('LogView')
     QCoreApplication.setApplicationVersion('0.1')
     QCoreApplication.setOrganizationName('Vinay Sajip')
     QCoreApplication.setOrganizationDomain('www.red-dove.com')
 
-    main = MainWindow()
+    main = MainWindow(options)
     main.show()
+    # On OS X, this call is needed to bring the application window to the
+    # front.
+    if sys.platform.startswith('darwin'):
+        main.raise_()
     app.exec_()
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG, format='%(message)s')
+#    logging.basicConfig(level=logging.DEBUG, format='%(message)s')
 #    h = logging.FileHandler('logview.log', 'w')
 #    logging.getLogger().addHandler(h)
     main()

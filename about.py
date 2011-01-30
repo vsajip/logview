@@ -1,19 +1,14 @@
 try:
-    from PyQt4.QtCore import QT_VERSION_STR
-except ImportError:
-    from PyQt4.QtCore import __version__ as QT_VERSION_STR
-
-try:
-    from PyQt4.QtCore import PYQT_VERSION_STR
-    WRAPPER = 'PyQt'
-except ImportError:
+    from PySide.QtCore import __version__ as QT_VERSION_STR
+    from PySide import __version__ as PYQT_VERSION_STR
+    from PySide.QtGui import QDialog
     WRAPPER = 'PySide'
-    try:
-        from PyQt4 import __version__ as PYQT_VERSION_STR
-    except ImportError:
-        PYQT_VERSION_STR = 'unknown'
+except ImportError:
+    from PyQt4.QtCore import QT_VERSION_STR
+    from PyQt4.QtCore import PYQT_VERSION_STR
+    from PyQt4.QtGui import QDialog
+    WRAPPER = 'PyQt'
 
-from PyQt4.QtGui import QDialog
 from ui_about import Ui_AboutDialog
 
 class AboutDialog(QDialog, Ui_AboutDialog):

@@ -2,12 +2,15 @@
 
 # Form implementation generated from reading ui file 'about.ui'
 #
-# Created: Wed Jan 19 18:47:33 2011
+# Created: Sun Jan 30 13:39:32 2011
 #      by: PyQt4 UI code generator 4.7.4
 #
 # WARNING! All changes made in this file will be lost!
 
-from PyQt4 import QtCore, QtGui
+try:
+    from PySide import QtCore, QtGui
+except ImportError:
+    from PyQt4 import QtCore, QtGui
 
 class Ui_AboutDialog(object):
     def setupUi(self, AboutDialog):
@@ -49,14 +52,14 @@ class Ui_AboutDialog(object):
         self.vLay.addItem(spacerItem)
         self.copyright = QtGui.QLabel(self.layoutWidget)
         font = QtGui.QFont()
-        font.setPointSize(10)
+        font.setPointSize(11)
         self.copyright.setFont(font)
         self.copyright.setObjectName("copyright")
         self.vLay.addWidget(self.copyright)
         self.logo = QtGui.QLabel(self.frame)
-        self.logo.setGeometry(QtCore.QRect(10, 10, 81, 81))
+        self.logo.setGeometry(QtCore.QRect(10, 10, 61, 81))
         self.logo.setText("")
-        self.logo.setPixmap(QtGui.QPixmap(":/rdclogo.gif"))
+        self.logo.setPixmap(QtGui.QPixmap(":/rdclogo.png"))
         self.logo.setObjectName("logo")
 
         self.retranslateUi(AboutDialog)
@@ -69,6 +72,6 @@ class Ui_AboutDialog(object):
         self.name.setText(QtGui.QApplication.translate("AboutDialog", "Python Log Viewer", None, QtGui.QApplication.UnicodeUTF8))
         self.version.setText(QtGui.QApplication.translate("AboutDialog", "version 0.1", None, QtGui.QApplication.UnicodeUTF8))
         self.qtversion.setText(QtGui.QApplication.translate("AboutDialog", "PyQt version on Qt version", None, QtGui.QApplication.UnicodeUTF8))
-        self.copyright.setText(QtGui.QApplication.translate("AboutDialog", "Copyright © 2011 Vinay M. Sajip. All rights reserved.", None, QtGui.QApplication.UnicodeUTF8))
+        self.copyright.setText(QtGui.QApplication.translate("AboutDialog", "Copyright © 2011 Vinay M. Sajip.", None, QtGui.QApplication.UnicodeUTF8))
 
 import logview_rc

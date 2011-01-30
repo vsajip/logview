@@ -1,5 +1,9 @@
-from PyQt4.QtCore import Qt, SIGNAL
-from PyQt4.QtGui import QDialog, QAbstractItemView, QListWidgetItem
+try:
+    from PySide.QtCore import Qt, SIGNAL
+    from PySide.QtGui import QDialog, QAbstractItemView, QListWidgetItem
+except ImportError:
+    from PyQt4.QtCore import Qt, SIGNAL
+    from PyQt4.QtGui import QDialog, QAbstractItemView, QListWidgetItem
 from ui_colprefs import Ui_ColPrefsDialog
 import copy
 

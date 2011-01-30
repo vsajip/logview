@@ -1,5 +1,5 @@
 <RCC>
   <qresource prefix="/">
-    <file>rdclogo.gif</file>
+    <file>rdclogo.png</file>
   </qresource>
 </RCC>

@@ -1,5 +1,9 @@
-from PyQt4.QtCore import Qt, SIGNAL
-from PyQt4.QtGui import QDialog
+try:
+    from PySide.QtCore import Qt, SIGNAL
+    from PySide.QtGui import QDialog
+except ImportError:
+    from PyQt4.QtCore import Qt, SIGNAL
+    from PyQt4.QtGui import QDialog
 from ui_textinfo import Ui_TextInfoDialog
 
 class TextInfoDialog(QDialog, Ui_TextInfoDialog):

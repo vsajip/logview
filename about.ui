@@ -108,11 +108,11 @@
       <widget class="QLabel" name="copyright">
        <property name="font">
         <font>
-         <pointsize>10</pointsize>
+         <pointsize>11</pointsize>
         </font>
        </property>
        <property name="text">
-        <string>Copyright © 2011 Vinay M. Sajip. All rights reserved.</string>
+        <string>Copyright © 2011 Vinay M. Sajip.</string>
        </property>
       </widget>
      </item>
@@ -123,7 +123,7 @@
      <rect>
       <x>10</x>
       <y>10</y>
-      <width>81</width>
+      <width>61</width>
       <height>81</height>
      </rect>
     </property>
@@ -131,7 +131,7 @@
      <string/>
     </property>
     <property name="pixmap">
-     <pixmap resource="logview.qrc">:/rdclogo.gif</pixmap>
+     <pixmap resource="logview.qrc">:/rdclogo.png</pixmap>
     </property>
    </widget>
   </widget>
