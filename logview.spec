@@ -21,6 +21,10 @@ if sys.platform == 'win32':
 exe = EXE(pyz, a.scripts, **exe_args)
 coll = COLLECT(exe,
                a.binaries,
+               (
+               	('README', 'README', 'DATA'),
+               	('LICENSE', 'LICENSE', 'DATA'),
+               ),
                a.zipfiles,
                a.datas,
                strip=False,
