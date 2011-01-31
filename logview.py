@@ -35,11 +35,17 @@ import re
 import sys
 import textinfo
 import threading
+from urllib import quote, unquote
+try:
+    import zmq
+except ImportError:
+    print sys.exc_info()[1]
+    zmq = None
 
 appname = os.path.splitext(os.path.basename(sys.argv[0]))[0]
 logger = logging.getLogger(appname)
 
-MessageRole = QtCore.Qt.UserRole
+MessageRole = Qt.UserRole
 
 invindex = QtCore.QModelIndex()
 
@@ -162,6 +168,11 @@ class LogRecordModel(QtCore.QAbstractTableModel):
         logging.CRITICAL: QtGui.QColor(255, 0, 0),
     }
 
+    style_map = {
+        logging.ERROR: 'bold',
+        logging.CRITICAL: 'bold',
+    }
+
     def __init__(self, parent, records, columns, capacity=0):
         super(LogRecordModel, self).__init__(parent)
         self._records = records
@@ -201,10 +212,15 @@ class LogRecordModel(QtCore.QAbstractTableModel):
             elif role == Qt.TextColorRole:
                 result = self.foreground_map.get(record.levelno)
             elif role == Qt.FontRole:
+                QFont = QtGui.QFont
                 result = None
-                if record.levelno >= logging.ERROR:
+                style = self.style_map.get(record.levelno)
+                if style:
                     result = QFont(self.font)
-                    result.setWeight(QFont.Bold)
+                    if 'bold' in style:
+                        result.setWeight(QFont.Bold)
+                    if 'italic' in style:
+                        result.setStyle(QFont.StyleItalic)
             elif role == MessageRole: # special role used for searching
                 result = record.message
         return result
@@ -385,25 +401,8 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
     def __init__(self, options=None):
         super(MainWindow, self).__init__()
+        self.settings = QtCore.QSettings()
         self.options = options
-        if not options:
-            addr = ('0.0.0.0', DEFAULT_TCP_LOGGING_PORT)
-        else:
-            addr = get_addr(options.tcphost, DEFAULT_TCP_LOGGING_PORT)
-        self.tcp_server = s = listeners.LoggingTCPServer(addr, self.on_record)
-        self.tcp_thread = t = threading.Thread(target=s.serve_until_stopped)
-        self._lock = threading.RLock()
-        t.setDaemon(True)
-        t.start()
-        
-        if not options:
-            addr = ('0.0.0.0', DEFAULT_UDP_LOGGING_PORT)
-        else:
-            addr = get_addr(options.udphost, DEFAULT_UDP_LOGGING_PORT)
-        self.udp_server = s = listeners.LoggingUDPServer(addr, self.on_record)
-        self.udp_thread = t = threading.Thread(target=s.serve_until_stopped)
-        t.setDaemon(True)
-        t.start()
 
         self._sindex = 0
         self.expand_tree = True
@@ -411,7 +410,42 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.moved_to_bottom = False
         self.split_sizes = {}
         self.setupUi(self)
+        self.start_listeners()
 
+    def start_listeners(self):
+        options = self.options
+        if not options:
+            addr = ('0.0.0.0', DEFAULT_TCP_LOGGING_PORT)
+        else:
+            addr = get_addr(options.tcphost, DEFAULT_TCP_LOGGING_PORT)
+        s = listeners.LoggingTCPServer(addr, self.on_record, 0.5)
+        self.tcp_server = s
+        self.tcp_thread = t = threading.Thread(target=s.serve_until_stopped)
+        self._lock = threading.RLock()
+        t.setDaemon(True)
+        t.start()
+
+        if not options:
+            addr = ('0.0.0.0', DEFAULT_UDP_LOGGING_PORT)
+        else:
+            addr = get_addr(options.udphost, DEFAULT_UDP_LOGGING_PORT)
+        s = listeners.LoggingUDPServer(addr, self.on_record, 0.5)
+        self.udp_server = s
+        self.udp_thread = t = threading.Thread(target=s.serve_until_stopped)
+        t.setDaemon(True)
+        t.start()
+
+        if zmq:
+            if not options:
+                addr = 'localhost:9024'
+            else:
+                addr = options.zmqhost
+            s = listeners.LoggingZMQServer('tcp://%s' % addr, self.on_record, 0.5)
+            self.zmq_server = s
+            self.zmq_thread = t = threading.Thread(target=s.serve_until_stopped)
+            t.setDaemon(True)
+            t.start()
+            
     def setupUi(self, w):
         super(MainWindow, self).setupUi(w)
         self.load_settings()
@@ -437,9 +471,16 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
             capacity = 0
         else:
             capacity = self.options.capacity
-        self.lmodel = LogRecordModel(self, self.records, self.columns, capacity)
+        self.lmodel = lmodel = LogRecordModel(self, self.records, self.columns,
+                                              capacity)
+        if self.background_map:
+            lmodel.background_map = self.background_map
+        if self.foreground_map:
+            lmodel.foreground_map = self.foreground_map
+        if self.style_map:
+            lmodel.style_map = self.style_map
         self.flmodel = m = FilterModel(self)
-        m.setSourceModel(self.lmodel)
+        m.setSourceModel(lmodel)
         self.master.setModel(m)
         self.pmodel = PropertySheetModel(self)
         self.detail.setModel(self.pmodel)
@@ -505,8 +546,42 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
     def show_status_message(self, s):
         self.statusbar.showMessage(s, 2000)
 
+    def load_colors(self, mapping, key):
+        settings = self.settings
+        settings.beginGroup(key)
+        for k in settings.childKeys():
+            v = settings.value(k)
+            v = [int(i) for i in v.split(',')]
+            v = QtGui.QColor(*v)
+            k = getattr(logging, k)
+            mapping[k] = v
+        settings.endGroup()
+
+    def load_strings(self, mapping, key):
+        settings = self.settings
+        settings.beginGroup(key)
+        for k in settings.childKeys():
+            v = settings.value(k)
+            k = getattr(logging, k)
+            mapping[k] = v
+        settings.endGroup()
+
+    def load_columns(self, cols, key):
+        settings = self.settings
+        settings.beginGroup(key)
+        ncols = settings.beginReadArray('columns')
+        for i in range(ncols):
+            settings.setArrayIndex(i)
+            info = settings.value('info')
+            name, title, vis = info.split(',')
+            title = unquote(title)
+            vis = bool(vis != '0')
+            cols.append(Column(name, title, vis))
+        settings.endArray()
+        settings.endGroup()
+
     def load_settings(self):
-        settings = QtCore.QSettings()
+        settings = self.settings
         settings.beginGroup('mainwindow')
         pos = settings.value('pos')
         size = settings.value('size')
@@ -515,24 +590,63 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         if size:
             self.resize(size)
         settings.endGroup()
-        columns = settings.value('columns')
+        columns = []
+        self.load_columns(columns, 'records')
         if not columns:
             columns = self.DEFAULT_COLUMNS
-        else:
-            columns = pickle.loads(columns.encode('utf-8'))
-            columns = [Column(**d) for d in columns]
         self.columns = columns
+        self.background_map = d = {}
+        self.load_colors(d, 'records/background')
+        self.foreground_map = d = {}
+        self.load_colors(d, 'records/foreground')
+        self.style_map = d = {}
+        self.load_strings(d, 'records/style')
+
+    def save_colors(self, mapping, key):
+        settings = self.settings
+        settings.beginGroup(key)
+        for k in mapping:
+            v = ','.join([str(i) for i in mapping[k].getRgb()])
+            settings.setValue(logging.getLevelName(k), v)
+        settings.endGroup()
+
+    def save_strings(self, mapping, key):
+        settings = self.settings
+        settings.beginGroup(key)
+        for k in mapping:
+            settings.setValue(logging.getLevelName(k), mapping[k])
+        settings.endGroup()
+
+    def save_columns(self, cols, key):
+        settings = self.settings
+        settings.beginGroup(key)
+        settings.beginWriteArray('columns')
+        for i, col in enumerate(cols):
+            settings.setArrayIndex(i)
+            v = ','.join([col.name, quote(col.title), str(int(col.visible))])
+            settings.setValue('info', v)
+        settings.endArray()
+        settings.endGroup()
 
     def save_settings(self):
-        settings = QtCore.QSettings()
+        settings = self.settings
         settings.beginGroup('mainwindow')
         settings.setValue('pos', self.pos())
         settings.setValue('size', self.size())
         settings.endGroup()
-        cols = [c.__dict__ for c in self.columns]
-        settings.setValue('columns', pickle.dumps(cols))
+        self.save_columns(self.columns, 'records')
+        self.save_colors(self.lmodel.background_map, 'records/background')
+        self.save_colors(self.lmodel.foreground_map, 'records/foreground')
+        self.save_strings(self.lmodel.style_map, 'records/style')
 
     def closeEvent(self, event):
+        self.tcp_server.stop()
+        self.tcp_thread.join()
+        self.udp_server.stop()
+        self.udp_thread.join()
+        if zmq:
+            self.zmq_server.stop()
+            self.zmq_thread.join()
         self.save_settings()
         event.accept()
 
@@ -660,8 +774,9 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.reset_master()
 
     def on_clear(self, checked=False):
+        QMessageBox = QtGui.QMessageBox
         dlg = QMessageBox(QMessageBox.Question, 'Clear All Records?',
-                          'Are you sure you want to clear all collected records?',
+                          'Are you sure you want to clear all %d collected records?' % len(self.records),
                           QMessageBox.Yes | QMessageBox.No)
         dlg.setInformativeText('This action cannot be undone.')
         rc = dlg.exec_()
@@ -753,7 +868,9 @@ def main():
                       help='Where to listen for TCP traffic (host[:port])')
     parser.add_option('-u', '--udp', default='0.0.0.0', dest='udphost',
                       help='Where to listen for UDP traffic (host[:port])')
-    
+    parser.add_option('-z', '--zmq', default='localhost:9024', dest='zmqhost',
+                      help='Where to listen for UDP traffic (host[:port])')
+
     # On a packaged OS X system, a '-psn' argument is passed which we
     # don't care about
     args = [arg for arg in sys.argv[1:] if not arg.startswith('-psn')]

@@ -7,9 +7,52 @@ from logging.handlers import (SocketHandler, DatagramHandler,
                               DEFAULT_TCP_LOGGING_PORT,
                               DEFAULT_UDP_LOGGING_PORT)
 import optparse
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 import random
 import sys
 import time
+try:
+    import zmq
+
+    class ZeroMQHandler(logging.Handler):
+        def __init__(self, uri, socktype=zmq.PUB, ctx=None):
+            logging.Handler.__init__(self)
+            self.ctx = ctx or zmq.Context()
+            self.socket = zmq.Socket(self.ctx, socktype)
+            self.socket.bind(uri)
+
+        def close(self):
+            self.socket.close()
+
+        def emit(self, record): 
+            """ 
+            Emit a record. 
+     
+            Writes the LogRecord to the queue, preparing it for pickling first. 
+            """ 
+            try: 
+                # The format operation gets traceback text into record.exc_text 
+                # (if there's exception data), and also puts the message into 
+                # record.message. We can then use this to replace the original 
+                # msg + args, as these might be unpickleable. We also zap the 
+                # exc_info attribute, as it's no longer needed and, if not None, 
+                # will typically not be pickleable. 
+                self.format(record) 
+                record.msg = record.message 
+                record.args = None 
+                record.exc_info = None 
+                data = pickle.dumps(record.__dict__)
+                self.socket.send(data)
+            except (KeyboardInterrupt, SystemExit): 
+                raise 
+            except Exception: 
+                self.handleError(record)
+            
+except ImportError:
+    zmq = None
 
 class LogData(object):
     def __init__(self, loggers):
@@ -67,46 +110,52 @@ def main():
                       help='Where to send TCP logs (host[:port])')
     parser.add_option('-u', '--udp', default='localhost', dest='udphost',
                       help='Where to send UDP logs (host[:port])')
+    parser.add_option('-z', '--zmq', default='*:9024', dest='zmqhost',
+                      help='Where to send ZMQ logs (host[:port])')
     options, args = parser.parse_args()
 
     tcp_logger = logging.getLogger('tcp')
     udp_logger = logging.getLogger('udp')
+    if not zmq:
+        loggers = [
+            'tcp.jim', 'udp.jim',
+            'tcp.fred', 'udp.fred',
+            'tcp.sheila', 'udp.sheila',
+            'tcp.jim.fred', 'udp.jim.fred',
+            'tcp.jim.sheila', 'udp.jim.sheila',
+            'tcp.fred.jim', 'udp.fred.jim',
+            'tcp.fred.sheila', 'udp.fred.sheila',
+            'tcp.sheila.jim', 'udp.sheila.jim',
+            'tcp.sheila.fred', 'udp.sheila.fred',
+            'tcp.jim.fred.sheila', 'udp.jim.fred.sheila',
+            'tcp.jim.sheila.fred', 'udp.jim.sheila.fred',
+            'tcp.fred.jim.sheila', 'udp.fred.jim.sheila',
+            'tcp.fred.sheila.jim', 'udp.fred.sheila.jim',
+            'tcp.sheila.jim.fred', 'udp.sheila.jim.fred',
+            'tcp.sheila.fred.jim', 'udp.sheila.fred.jim'
+        ]
+    else:
+        zmq_logger = logging.getLogger('zmq')
+        loggers = [
+            'tcp.jim', 'udp.jim', 'zmq.jim',
+            'tcp.fred', 'udp.fred', 'zmq.fred',
+            'tcp.sheila', 'udp.sheila', 'zmq.sheila',
+            'tcp.jim.fred', 'udp.jim.fred', 'zmq.jim.fred',
+            'tcp.jim.sheila', 'udp.jim.sheila', 'zmq.jim.sheila',
+            'tcp.fred.jim', 'udp.fred.jim', 'zmq.fred.jim',
+            'tcp.fred.sheila', 'udp.fred.sheila', 'zmq.fred.sheila',
+            'tcp.sheila.jim', 'udp.sheila.jim', 'zmq.sheila.jim',
+            'tcp.sheila.fred', 'udp.sheila.fred', 'zmq.sheila.fred',
+            'tcp.jim.fred.sheila', 'udp.jim.fred.sheila', 'zmq.jim.fred.sheila',
+            'tcp.jim.sheila.fred', 'udp.jim.sheila.fred', 'zmq.jim.sheila.fred',
+            'tcp.fred.jim.sheila', 'udp.fred.jim.sheila', 'zmq.fred.jim.sheila',
+            'tcp.fred.sheila.jim', 'udp.fred.sheila.jim', 'zmq.fred.sheila.jim',
+            'tcp.sheila.jim.fred', 'udp.sheila.jim.fred', 'zmq.sheila.jim.fred',
+            'tcp.sheila.fred.jim', 'udp.sheila.fred.jim', 'zmq.sheila.fred.jim',
+        ]
 
     levels = (logging.DEBUG, logging.INFO, logging.WARNING,
               logging.ERROR, logging.CRITICAL)
-
-    components = ['jim', 'fred', 'sheila']
-
-#    The code below is replaced with a literal list, as Python 2.5 doesn't have
-#    itertools.permutations
-#
-#    from itertools import permutations
-#    loggers = []
-#    for i in range(1, 4):
-#        for p in permutations(components, i):
-#            s = '.'.join(('tcp',) + p)
-#            loggers.append(s)
-#            s = '.'.join(('udp',) + p)
-#            loggers.append(s)
-#    print loggers
-    
-    loggers = [
-        'tcp.jim', 'udp.jim',
-        'tcp.fred', 'udp.fred',
-        'tcp.sheila', 'udp.sheila',
-        'tcp.jim.fred', 'udp.jim.fred',
-        'tcp.jim.sheila', 'udp.jim.sheila',
-        'tcp.fred.jim', 'udp.fred.jim',
-        'tcp.fred.sheila', 'udp.fred.sheila',
-        'tcp.sheila.jim', 'udp.sheila.jim',
-        'tcp.sheila.fred', 'udp.sheila.fred',
-        'tcp.jim.fred.sheila', 'udp.jim.fred.sheila',
-        'tcp.jim.sheila.fred', 'udp.jim.sheila.fred',
-        'tcp.fred.jim.sheila', 'udp.fred.jim.sheila',
-        'tcp.fred.sheila.jim', 'udp.fred.sheila.jim',
-        'tcp.sheila.jim.fred', 'udp.sheila.jim.fred',
-        'tcp.sheila.fred.jim', 'udp.sheila.fred.jim'
-    ]
 
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(levelname)-8s %(name)-19s %(message)s')
 
@@ -123,6 +172,9 @@ def main():
     h = DatagramHandler(*addr)
     udp_logger.addHandler(h)
 
+    if zmq:
+        h = ZeroMQHandler('tcp://%s' % options.zmqhost)
+        zmq_logger.addHandler(h)
     log_data = LogData(loggers)
     try:
         while True:
