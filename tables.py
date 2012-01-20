@@ -1,7 +1,4 @@
-try:
-    from PySide import QtCore, QtGui
-except ImportError:
-    from PyQt4 import QtCore, QtGui
+from qt import QtCore, QtGui
 import logging
 
 logger = logging.getLogger(__name__)

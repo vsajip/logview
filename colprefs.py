@@ -1,15 +1,11 @@
-try:
-    from PySide.QtCore import Qt, SIGNAL
-    from PySide.QtGui import QDialog, QAbstractItemView, QListWidgetItem
-except ImportError:
-    from PyQt4.QtCore import Qt, SIGNAL
-    from PyQt4.QtGui import QDialog, QAbstractItemView, QListWidgetItem
+from qt import QtCore, QtGui, Qt
+
 from ui_colprefs import Ui_ColPrefsDialog
 import copy
 
-class ColumnItem(QListWidgetItem):
+class ColumnItem(QtGui.QListWidgetItem):
     def __init__(self, parent, column):
-        super(ColumnItem, self).__init__(parent, QListWidgetItem.UserType)
+        super(ColumnItem, self).__init__(parent, QtGui.QListWidgetItem.UserType)
         self.column = column
 
     def data(self, role):
@@ -27,17 +23,17 @@ class ColumnItem(QListWidgetItem):
         if role == Qt.CheckStateRole:
             self.column.visible = value
 
-class ColPrefsDialog(QDialog, Ui_ColPrefsDialog):
+class ColPrefsDialog(QtGui.QDialog, Ui_ColPrefsDialog):
     def __init__(self, parent, columns):
         super(ColPrefsDialog, self).__init__(parent)
         self.columns = [copy.copy(c) for c in columns]
         self.setupUi(self)
-        self.connect(self, SIGNAL('accepted()'), self.on_accept)
+        self.connect(self, QtCore.SIGNAL('accepted()'), self.on_accept)
 
     def setupUi(self, w):
         super(ColPrefsDialog, self).setupUi(w)
         thelist = self.list
-        thelist.setDragDropMode(QAbstractItemView.InternalMove)
+        thelist.setDragDropMode(QtGui.QAbstractItemView.InternalMove)
 
         for col in self.columns:
             item = ColumnItem(thelist, col)

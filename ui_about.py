@@ -2,15 +2,12 @@
 
 # Form implementation generated from reading ui file 'about.ui'
 #
-# Created: Sun Jan 30 13:39:32 2011
+# Created: Sun Feb  6 14:39:53 2011
 #      by: PyQt4 UI code generator 4.7.4
 #
 # WARNING! All changes made in this file will be lost!
 
-try:
-    from PySide import QtCore, QtGui
-except ImportError:
-    from PyQt4 import QtCore, QtGui
+from qt import QtCore, QtGui
 
 class Ui_AboutDialog(object):
     def setupUi(self, AboutDialog):

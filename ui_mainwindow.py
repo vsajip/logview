@@ -2,15 +2,12 @@
 
 # Form implementation generated from reading ui file 'mainwindow.ui'
 #
-# Created: Fri Jan 21 13:34:23 2011
+# Created: Sun Feb  6 14:39:53 2011
 #      by: PyQt4 UI code generator 4.7.4
 #
 # WARNING! All changes made in this file will be lost!
 
-try:
-    from PySide import QtCore, QtGui
-except ImportError:
-    from PyQt4 import QtCore, QtGui
+from qt import QtCore, QtGui
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -45,7 +42,6 @@ class Ui_MainWindow(object):
         self.tree = LoggerTree(self.layoutWidget)
         self.tree.setObjectName("tree")
         self.verticalLayout.addWidget(self.tree)
-        self.verticalLayout.setStretch(1, 1)
         self.mSplit = Splitter(self.cSplit)
         self.mSplit.setOrientation(QtCore.Qt.Vertical)
         self.mSplit.setObjectName("mSplit")

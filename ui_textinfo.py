@@ -2,15 +2,12 @@
 
 # Form implementation generated from reading ui file 'textinfo.ui'
 #
-# Created: Wed Jan 19 10:48:31 2011
+# Created: Sun Feb  6 14:39:53 2011
 #      by: PyQt4 UI code generator 4.7.4
 #
 # WARNING! All changes made in this file will be lost!
 
-try:
-    from PySide import QtCore, QtGui
-except ImportError:
-    from PyQt4 import QtCore, QtGui
+from qt import QtCore, QtGui
 
 class Ui_TextInfoDialog(object):
     def setupUi(self, TextInfoDialog):

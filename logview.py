@@ -2,16 +2,7 @@
 """
 A program to view logs sent via TCP and UDP sockets.
 """
-try:
-    import sip
-    sip.setapi('QString', 2)
-    sip.setapi('QVariant', 2)
-    import PyQt4.QtCore as QtCore
-    import PyQt4.QtGui as QtGui
-except ImportError:
-    import PySide.QtCore as QtCore
-    import PySide.QtGui as QtGui
-Qt = QtCore.Qt
+from qt import QtCore, QtGui, Qt
 from ui_mainwindow import Ui_MainWindow
 
 import about
@@ -58,10 +49,19 @@ class TreeNode(object):
     @property
     def path(self):
         result = [self.name]
-        if self.parent and self.parent.parent:
-            result.insert(0, self.parent.path)
+        parent = self.parent
+        if parent and parent.parent:
+            result.insert(0, parent.path)
         return '.'.join(result)
 
+    @property
+    def row(self):
+        result = 0
+        parent = self.parent
+        if parent:
+            result = parent.children.index(self)
+        return result
+        
 class LoggerModel(QtCore.QAbstractItemModel):
     def __init__(self, parent):
         super(LoggerModel, self).__init__(parent)
@@ -91,7 +91,7 @@ class LoggerModel(QtCore.QAbstractItemModel):
         if index.isValid():
             node = index.internalPointer()
             if node.parent is not None:
-                result = self.createIndex(0, 0, node.parent)
+                result = self.createIndex(node.parent.row, 0, node.parent)
         return result
 
     def rowCount(self, parent):
@@ -406,7 +406,6 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
         self._sindex = 0
         self.expand_tree = True
-        self.stick_to_bottom = True
         self.moved_to_bottom = False
         self.split_sizes = {}
         self.setupUi(self)
@@ -414,38 +413,33 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
     def start_listeners(self):
         options = self.options
-        if not options:
-            addr = ('0.0.0.0', DEFAULT_TCP_LOGGING_PORT)
-        else:
-            addr = get_addr(options.tcphost, DEFAULT_TCP_LOGGING_PORT)
-        s = listeners.LoggingTCPServer(addr, self.on_record, 0.5)
+        if options:
+            self.tcp_addr = get_addr(options.tcphost, DEFAULT_TCP_LOGGING_PORT)
+        s = listeners.LoggingTCPServer(self.tcp_addr, self.on_record, 0.5)
         self.tcp_server = s
         self.tcp_thread = t = threading.Thread(target=s.serve_until_stopped)
         self._lock = threading.RLock()
         t.setDaemon(True)
         t.start()
 
-        if not options:
-            addr = ('0.0.0.0', DEFAULT_UDP_LOGGING_PORT)
-        else:
-            addr = get_addr(options.udphost, DEFAULT_UDP_LOGGING_PORT)
-        s = listeners.LoggingUDPServer(addr, self.on_record, 0.5)
+        if options:
+            self.udp_addr = get_addr(options.udphost, DEFAULT_UDP_LOGGING_PORT)
+        s = listeners.LoggingUDPServer(self.udp_addr, self.on_record, 0.5)
         self.udp_server = s
         self.udp_thread = t = threading.Thread(target=s.serve_until_stopped)
         t.setDaemon(True)
         t.start()
 
         if zmq:
-            if not options:
-                addr = 'localhost:9024'
-            else:
-                addr = options.zmqhost
-            s = listeners.LoggingZMQServer('tcp://%s' % addr, self.on_record, 0.5)
+            if options:
+                self.zmq_addr = options.zmqhost
+            s = listeners.LoggingZMQServer('tcp://%s' % self.zmq_addr,
+                                           self.on_record, 0.5)
             self.zmq_server = s
             self.zmq_thread = t = threading.Thread(target=s.serve_until_stopped)
             t.setDaemon(True)
             t.start()
-            
+
     def setupUi(self, w):
         super(MainWindow, self).setupUi(w)
         self.load_settings()
@@ -518,8 +512,8 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         connect(self.match, SIGNAL('returnPressed()'), self.on_search)
         connect(self.search, SIGNAL('clicked(bool)'), self.on_search)
 
-        connect(self.cSplit, SIGNAL('doubleClicked'), self.on_csplit_dclick)
-        connect(self.mSplit, SIGNAL('doubleClicked'), self.on_msplit_dclick)
+        connect(self.cSplit, SIGNAL('doubleClicked(int,int)'), self.on_csplit_dclick)
+        connect(self.mSplit, SIGNAL('doubleClicked(int,int)'), self.on_msplit_dclick)
 
         self.validate()
 
@@ -580,6 +574,17 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         settings.endArray()
         settings.endGroup()
 
+    def load_networks(self):
+        settings = self.settings
+        settings.beginGroup('network')
+        s = settings.value('tcphost', '0.0.0.0')
+        self.tcp_addr = get_addr(s, DEFAULT_TCP_LOGGING_PORT)
+        s = settings.value('udphost', '0.0.0.0')
+        self.udp_addr = get_addr(s, DEFAULT_UDP_LOGGING_PORT)
+        if zmq:
+            self.zmq_addr = settings.value('zmqhost', 'localhost:9024')
+        settings.endGroup()
+        
     def load_settings(self):
         settings = self.settings
         settings.beginGroup('mainwindow')
@@ -601,6 +606,11 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.load_colors(d, 'records/foreground')
         self.style_map = d = {}
         self.load_strings(d, 'records/style')
+        settings.beginGroup('records')
+        v = settings.value('stick_to_bottom', '1')
+        self.stick_to_bottom = bool(int(v))
+        settings.endGroup()
+        self.load_networks()
 
     def save_colors(self, mapping, key):
         settings = self.settings
@@ -628,6 +638,15 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         settings.endArray()
         settings.endGroup()
 
+    def save_network(self):
+        settings = self.settings
+        settings.beginGroup('network')
+        settings.setValue('tcphost', '%s:%d' % self.tcp_addr)
+        settings.setValue('udphost', '%s:%d' % self.udp_addr)
+        if zmq:
+            settings.setValue('zmqhost', self.zmq_addr)
+        settings.endGroup()
+
     def save_settings(self):
         settings = self.settings
         settings.beginGroup('mainwindow')
@@ -638,6 +657,10 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         self.save_colors(self.lmodel.background_map, 'records/background')
         self.save_colors(self.lmodel.foreground_map, 'records/foreground')
         self.save_strings(self.lmodel.style_map, 'records/style')
+        settings.beginGroup('records')
+        settings.setValue('stick_to_bottom', int(self.stick_to_bottom))
+        settings.endGroup()
+        self.save_network()
 
     def closeEvent(self, event):
         self.tcp_server.stop()
@@ -690,15 +713,18 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
         dlg = about.AboutDialog(self)
         dlg.show()
 
+    def process_record(self, record):
+        self.lmodel.add_record(record)
+        tmodel = self.tmodel
+        tmodel.register_logger(record.name)
+        self.validate()
+
     def on_record(self, record):
         self._lock.acquire()
         try:
-            self.lmodel.add_record(record)
-            tmodel = self.tmodel
-            tmodel.register_logger(record.name)
+            self.process_record(record)
         finally:
             self._lock.release()
-            self.validate()
 
     def on_master_selection_changed(self, sel, desel):
         self.update_detail()
@@ -860,7 +886,6 @@ class MainWindow(QtGui.QMainWindow, Ui_MainWindow):
 
 
 def main():
-
     parser = optparse.OptionParser()
     parser.add_option('-c', '--capacity', default=0, type='int', dest='capacity',
                       help='Maximum number of messages to hold')
@@ -892,7 +917,8 @@ def main():
     app.exec_()
 
 if __name__ == '__main__':
-#    logging.basicConfig(level=logging.DEBUG, format='%(message)s')
-#    h = logging.FileHandler('logview.log', 'w')
-#    logging.getLogger().addHandler(h)
+    root = logging.getLogger()
+    h = logging.FileHandler('logview.log', 'w')
+    root.addHandler(h)
+    root.setLevel(logging.DEBUG)
     main()

@@ -7,10 +7,7 @@
 #
 # WARNING! All changes made in this file will be lost!
 
-try:
-    from PySide import QtCore
-except ImportError:
-    from PyQt4 import QtCore
+from qt import QtCore, QtGui
 
 qt_resource_data = "\
 \x00\x00\x05\x39\
